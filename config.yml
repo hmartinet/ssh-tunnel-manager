@@ -1,8 +1,10 @@
 # User configuration for SSH Tunnel Manager
 
+editor: vim
+
 ssh:
   cmd: ssh {remote}
-  tunnel-cmd: ssh -4 -L {lport}:localhost:{rport} {remote}
+  tunnel-cmd: ssh -L {lport}:localhost:{rport} {remote}
   hop-cmd: ssh -A -t {hop} ssh {remote}
   hop-tunnel-cmd: ssh -A -t -L {lport}:localhost:{hport} {hop} ssh -L {hport}:localhost:{rport} {remote}
 #  default-hop: my.default.hop.server

@@ -3,7 +3,6 @@
 
 import os
 import appdirs
-import sys
 import yaml
 import subprocess
 import argparse
@@ -18,14 +17,14 @@ APP_VERSION = "0.1-beta1"
 class Controller(object):
 
     def __init__(self):
-        _dir = os.path.dirname(os.path.realpath(__file__))
+        self._dir = os.path.dirname(os.path.realpath(__file__))
         conf_dir = os.path.dirname(
             appdirs.user_data_dir(APP_NAME, APP_AUTHOR, version=APP_VERSION))
         if not os.path.exists(conf_dir):
             os.makedirs(conf_dir)
         self.conf_file = '{}/config.yml'.format(conf_dir)
         if not os.path.exists(self.conf_file):
-            copyfile('{}/config.yml'.format(_dir), self.conf_file)
+            copyfile('{}/config.yml'.format(self._dir), self.conf_file)
         with open(self.conf_file, 'r') as f:
             self.conf = Config(yaml.load(f))
         self.parse_args()
@@ -36,6 +35,13 @@ class Controller(object):
         self.parser.add_argument(
             '-c', '--config', action='store_true', dest='config',
             help="edit configuration file")
+        self.parser.add_argument(
+            '--set-editor', dest='editor', metavar="nano|vim|gedit|...",
+            help="set editor for config file")
+        self.parser.add_argument(
+            '--auto-conf-network-manager', action='store_true',
+            dest='auto_stm', help="auto configure Network-Manager dnsmasq "
+            "with .stm domain")
 
         def hop_arg(parser):
             default_hop = self.conf.get('ssh', 'default-hop')
@@ -70,9 +76,36 @@ class Controller(object):
         argcomplete.autocomplete(self.parser)
         self.args = self.parser.parse_args()
 
-    def run(self, args):
-        if self.args.config:
-            subprocess.run([self.conf.get('editor'), self.conf_file])
+    def run(self):
+        if self.args.auto_stm:
+            if os.getuid() != 0:
+                print(BColors.FAIL +
+                      "ERROR > You need root rights to do that "
+                      "(use 'sudo stm --auto-conf-network-manager')" +
+                      BColors.ENDC)
+                return
+            dnsmasq_dir = '/etc/NetworkManager/dnsmasq.d'
+            if not os.path.exists(dnsmasq_dir):
+                print(BColors.FAIL +
+                      "ERROR > folder {} does not exists".format(dnsmasq_dir) +
+                      BColors.ENDC)
+                return
+            print(BColors.HEADER + 'FILE > ' +
+                  '{}/dnsmasq-stm.conf'.format(dnsmasq_dir) + BColors.ENDC)
+            copyfile('{}/dnsmasq-stm.conf'.format(self._dir),
+                     '{}/dnsmasq-stm.conf'.format(dnsmasq_dir))
+            print(BColors.HEADER +
+                  'RUN > service network-manager restart' + BColors.ENDC)
+            subprocess.run(['service', 'network-manager', 'restart'])
+            print(BColors.OKGREEN +
+                  "SUCCESS > Configuration updated" + BColors.ENDC)
+        elif self.args.editor:
+            subprocess.run([
+                'sed', '-i',
+                's/editor\s*:.*$/editor: {}/'.format(self.args.editor),
+                self.conf_file])
+        elif self.args.config:
+            subprocess.Popen([self.conf.get('editor'), self.conf_file])
         elif self.args.server:
             server = self.conf.sub('servers', self.args.server)
             if self.args.command:
@@ -102,12 +135,14 @@ class Controller(object):
             self.parser.print_help()
 
     def print_tunnel(self, server, command):
-        print(BColors.WARNING + BColors.BOLD +
-              "\n### {}:{} tunnelized on {}.{}:{} ###\n".format(
-                  server.get('ip'), command.get('remote'),
-                  self.args.server, Const.STM,
-                  self.args.port or command.get('local')) +
-              BColors.ENDC)
+        local_port = self.args.port or command.get('local')
+        hop_port = self.args.hop_port or local_port
+        msg = "# {}:{} forwarding on {}.{}:{}{}...".format(
+            server.get('ip'), command.get('remote'),
+            self.args.server, Const.STM, local_port,
+            self.args.hop and ' (through {}:{})'.format(
+                self.args.hop, hop_port) or '')
+        print(BColors.WARNING + BColors.BOLD + msg + BColors.ENDC)
 
     def connect(self, cmd):
         print(BColors.HEADER + 'RUN > ' + cmd + BColors.ENDC)
@@ -150,7 +185,7 @@ class BColors:
 
 def main():
     controller = Controller()
-    controller.run(sys.argv[1:])
+    controller.run()
 
 
 if __name__ == '__main__':
