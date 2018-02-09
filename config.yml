@@ -1,0 +1,23 @@
+# User configuration for SSH Tunnel Manager
+
+ssh:
+  cmd: ssh {remote}
+  tunnel-cmd: ssh -4 -L {lport}:localhost:{rport} {remote}
+  hop-cmd: ssh -A -t {hop} ssh {remote}
+  hop-tunnel-cmd: ssh -A -t -L {lport}:localhost:{hport} {hop} ssh -L {hport}:localhost:{rport} {remote}
+#  default-hop: my.default.hop.server
+
+servers:
+
+#  my.server:
+#    help: My example server configuration
+#    ip: my.server.org
+#    tunnels:
+#      http:
+#        help: Apache HTTP
+#        remote: 80
+#        local: 8080
+#      pg:
+#        help: PostgreSQL
+#        remote: 5432
+#        local: 15432
