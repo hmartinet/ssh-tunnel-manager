@@ -1,4 +1,5 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 # PYTHON_ARGCOMPLETE_OK
 
 import os
@@ -8,10 +9,18 @@ import subprocess
 import argparse
 import argcomplete
 from shutil import copyfile
+from ssh_tunnel_manager.version import __version__
 
 APP_NAME = "SSH Tunnel Manager"
 APP_AUTHOR = "Hervé Martinet"
-APP_VERSION = "0.1-beta1"
+APP_VERSION = __version__
+
+STM = 'stm'
+CONF_FILE = 'config.yml'
+CONF_DEFAULT_FILE = 'conf/default_config.yml'
+DNSMASQ_DIR = '/etc/NetworkManager/dnsmasq.d'
+DNSMASQ_FILE = 'dnsmasq-stm.conf'
+DNSMASQ_DEFAULT_FILE = 'dnsmasq-stm.conf'
 
 
 class Controller(object):
@@ -22,9 +31,10 @@ class Controller(object):
             appdirs.user_data_dir(APP_NAME, APP_AUTHOR, version=APP_VERSION))
         if not os.path.exists(conf_dir):
             os.makedirs(conf_dir)
-        self.conf_file = '{}/config.yml'.format(conf_dir)
+        self.conf_file = '{}/{}'.format(conf_dir, CONF_FILE)
         if not os.path.exists(self.conf_file):
-            copyfile('{}/config.yml'.format(self._dir), self.conf_file)
+            copyfile('{}/{}'.format(
+                self._dir, CONF_DEFAULT_FILE), self.conf_file)
         with open(self.conf_file, 'r') as f:
             self.conf = Config(yaml.load(f))
         self.parse_args()
@@ -32,6 +42,9 @@ class Controller(object):
     def parse_args(self):
         self.parser = argparse.ArgumentParser()
 
+        self.parser.add_argument(
+            '-v', '--version', action='store_true', dest='version',
+            help="display current version")
         self.parser.add_argument(
             '-c', '--config', action='store_true', dest='config',
             help="edit configuration file")
@@ -77,28 +90,27 @@ class Controller(object):
         self.args = self.parser.parse_args()
 
     def run(self):
-        if self.args.auto_stm:
+        if self.args.version:
+            print('{}{}{} {}'.format(
+                Bash.Style.BOLD, APP_NAME, Bash.Style.ENDC, APP_VERSION))
+            print
+        elif self.args.auto_stm:
             if os.getuid() != 0:
-                print(BColors.FAIL +
-                      "ERROR > You need root rights to do that "
-                      "(use 'sudo stm --auto-conf-network-manager')" +
-                      BColors.ENDC)
+                Bash.err(
+                    "You need root rights to do that "
+                    "(use 'sudo stm --auto-conf-network-manager')")
                 return
-            dnsmasq_dir = '/etc/NetworkManager/dnsmasq.d'
-            if not os.path.exists(dnsmasq_dir):
-                print(BColors.FAIL +
-                      "ERROR > folder {} does not exists".format(dnsmasq_dir) +
-                      BColors.ENDC)
+            if not os.path.exists(DNSMASQ_DIR):
+                Bash.err("folder {} does not exists".format(DNSMASQ_DIR))
                 return
-            print(BColors.HEADER + 'FILE > ' +
-                  '{}/dnsmasq-stm.conf'.format(dnsmasq_dir) + BColors.ENDC)
-            copyfile('{}/dnsmasq-stm.conf'.format(self._dir),
-                     '{}/dnsmasq-stm.conf'.format(dnsmasq_dir))
-            print(BColors.HEADER +
-                  'RUN > service network-manager restart' + BColors.ENDC)
+            Bash.head(
+                Bash.Tag.FILE,
+                '{}/{}'.format(DNSMASQ_DIR, DNSMASQ_FILE))
+            copyfile('{}/{}'.format(self._dir, DNSMASQ_DEFAULT_FILE),
+                     '{}/{}'.format(DNSMASQ_DIR, DNSMASQ_FILE))
+            Bash.head(Bash.Tag.RUN, "service network-manager restart")
             subprocess.run(['service', 'network-manager', 'restart'])
-            print(BColors.OKGREEN +
-                  "SUCCESS > Configuration updated" + BColors.ENDC)
+            Bash.ok("Configuration updated")
         elif self.args.editor:
             subprocess.run([
                 'sed', '-i',
@@ -139,13 +151,13 @@ class Controller(object):
         hop_port = self.args.hop_port or local_port
         msg = "# {}:{} forwarding on {}.{}:{}{}...".format(
             server.get('ip'), command.get('remote'),
-            self.args.server, Const.STM, local_port,
+            self.args.server, STM, local_port,
             self.args.hop and ' (through {}:{})'.format(
                 self.args.hop, hop_port) or '')
-        print(BColors.WARNING + BColors.BOLD + msg + BColors.ENDC)
+        print(Bash.Style.WARNING + Bash.Style.BOLD + msg + Bash.Style.ENDC)
 
     def connect(self, cmd):
-        print(BColors.HEADER + 'RUN > ' + cmd + BColors.ENDC)
+        Bash.head(Bash.Tag.RUN, cmd)
         subprocess.run(cmd.split(' '))
 
 
@@ -155,9 +167,12 @@ class Config():
         self.c = config
 
     def get(self, *path, default=None, node=None):
+        def val(v):
+            return default if v is None else v
+
         node = node or self.c
         if len(path) == 1:
-            return node.get(path[0], default)
+            return val(node.get(path[0], default))
         return self.get(*path[1:], default=default, node=node.get(path[0], {}))
 
     def sub(self, *path):
@@ -168,19 +183,38 @@ class Config():
                 for k, v in self.get(*path, default={}).items()}.items()
 
 
-class Const:
-    STM = 'stm'
+class Bash:
+    class Style:
+        HEADER = '\033[95m'
+        OKBLUE = '\033[94m'
+        OKGREEN = '\033[92m'
+        WARNING = '\033[93m'
+        FAIL = '\033[91m'
+        ENDC = '\033[0m'
+        BOLD = '\033[1m'
+        UNDERLINE = '\033[4m'
 
+    class Tag:
+        ERROR = 'ERROR'
+        SUCCESS = 'SUCCESS'
+        RUN = 'RUN'
+        FILE = 'FILE'
 
-class BColors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
+    @staticmethod
+    def out(tag, msg, style=None):
+        print('{}{} > {}{}'.format(style, tag, msg, style and Bash.Style.ENDC))
+
+    @staticmethod
+    def ok(msg):
+        Bash.out(Bash.Tag.SUCCESS, msg, Bash.Style.OKGREEN)
+
+    @staticmethod
+    def err(msg):
+        Bash.out(Bash.Tag.ERROR, msg, Bash.Style.FAIL)
+
+    @staticmethod
+    def head(tag, msg):
+        Bash.out(tag, msg, Bash.Style.HEADER)
 
 
 def main():
