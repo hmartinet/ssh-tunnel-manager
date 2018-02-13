@@ -32,11 +32,11 @@ stm -h
 
 #### Production Install
 
-Install for production in a virtualenv (exmaple for Debian/Ubuntu).
+Install for production in a virtualenv (example for Debian/Ubuntu).
 
 
 ```
-sudo apt-get isntall python3-virtualenv
+sudo apt-get install python3-virtualenv
 sudo virtualenv ssh-tunnel-manager --python=python3
 sudo -H ssh-tunnel-manager/bin/pip install ssh_tunnel_manager
 sudo ln -s /opt/ssh-tunnel-manager/bin/stm /usr/bin/stm
