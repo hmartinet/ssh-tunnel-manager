@@ -1,0 +1,3 @@
+include *.md
+recursive-include ssh_tunnel_manager *.yml
+recursive-include ssh_tunnel_manager *.conf
